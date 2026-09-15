@@ -18,7 +18,7 @@ logging.basicConfig(
 )
 
 # --- কনফিগারেশন ও ডাটা সেটিং ---
-PASSWORD = "love123"  # 👈 এখানে আপনার ইচ্ছামতো সিক্রেট পাসওয়ার্ড দিন
+PASSWORD = os.getenv("PASSWORD")  # 👈 এখানে আপনার ইচ্ছামতো সিক্রেট পাসওয়ার্ড দিন
 
 # অথেন্টিকেটেড ইউজার আইডি জমা রাখার সেট (RAM Memory)
 AUTHENTICATED_USERS = set()
