@@ -1,7 +1,7 @@
 import os
 import random
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -17,51 +17,71 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ডেটাবেজ/লিস্ট (উক্তি, টিপস ও ফ্লার্ট লাইন)
-LOVE_QUOTES = [
-    "ভালোবাসা মানে কাউকে কাছে পাওয়ার ইচ্ছা নয়, বরং কারো শান্তিতে থাকার কারণ হওয়া। ❤️",
-    "তুমি আমার সেই কবিতা, যা প্রতিদিন পড়তে ইচ্ছে করে। 📖💖",
-    "পৃথিবীর সবচেয়ে সুন্দর অনুভূতি হলো কারো প্রিয় মানুষ হওয়া। 🌸",
-    "প্রেম হলো একটি আত্মাকে দুটি দেহে বসবাস করার সুন্দর রূপ। ✨"
+# --- ডিফল্ট কিছু ব্যাকআপ ছবি (file_id খালি থাকলে এগুলো দেখাবে) ---
+DEFAULT_PHOTOS = [
+    "https://images.unsplash.com/photo-1518199266791-5375a83190b7",
+    "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2"
 ]
 
-LOVE_TIPS = [
-    "💡 পরামর্শ: সঙ্গীর কথার গুরুত্ব দিন এবং ভালো শ্রোতা হন।",
-    "💡 পরামর্শ: প্রতিদিন অন্তত একবার তার খবরাখবর নিন এবং যত্ন দেখান।",
-    "💡 পরামর্শ: সম্পর্কে ছোট ছোট ভুল ক্ষমার চোখে দেখতে শিখুন।",
-    "💡 পরামর্শ: মাঝে মাঝে কোনো কারণ ছাড়াই তাকে চমকে (Surprise) দিন।"
-]
+# ইউজারদের পাঠানো ছবির File ID গচ্ছিত রাখার মেমোরি লিস্ট
+USER_SAVED_PHOTOS = []
 
-FLIRT_LINES = [
-    "তুমি কি কোনো জাদু জানো? কারণ আমি যতবার তোমার দিকে তাকাই, চারপাশের বাকি সবকিছু গায়েব হয়ে যায়! 😉✨",
-    "আমার কাছে একটা ম্যাপ আছে, কিন্তু আমি তোমার চোখে হারিয়ে গিয়েছি! 🗺️❤️",
-    "তোমার হাসিটা দেখতে এতটা সুন্দর কেন? আমার দিনটাই সুন্দর হয়ে যায়! 🙈"
-]
-
-# ১. /start কমান্ড ও মেইন মেনু
+# ১. /start কমান্ড ও প্রধান বাটন মেনু
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     welcome_text = (
         f"হ্যালো {user_name}! ❤️\n\n"
-        "আমি আপনার ভালোবাসার বিশেষ সহকারী বোট। নিচে দেওয়া বাটন বা কমান্ড ব্যবহার করে সেবা উপভোগ করুন:"
+        "আমি আপনার রোমান্টিক ভালোবাসার বোট। 🤖\n\n"
+        "📌 *গ্যালারি ফিচার:* আপনি চাইলে বোটে যেকোনো সুন্দর ছবি পাঠাতে পারেন! "
+        "আপনার পাঠানো ছবিগুলো বোটের গ্যালারিতে সেভ হয়ে যাবে।"
     )
 
-    # ইনলাইন বাটন মেনু
     keyboard = [
-        [InlineKeyboardButton("💖 লাভ ক্যালকুলেটর", callback_data="btn_calc_info")],
-        [InlineKeyboardButton("📜 রোমান্টিক উক্তি", callback_data="btn_quote"), InlineKeyboardButton("💡 সম্পর্কের টিপস", callback_data="btn_tips")],
-        [InlineKeyboardButton("😉 ফ্লার্ট লাইন", callback_data="btn_flirt")]
+        [InlineKeyboardButton("🖼️ ফটো গ্যালারি দেখুন", callback_data="btn_gallery")],
+        [InlineKeyboardButton("💖 লাভ ক্যালকুলেটর", callback_data="btn_calc_info"), InlineKeyboardButton("📜 রোমান্টিক উক্তি", callback_data="btn_quote")],
+        [InlineKeyboardButton("💡 সম্পর্কের টিপস", callback_data="btn_tips"), InlineKeyboardButton("😉 ফ্লার্ট লাইন", callback_data="btn_flirt")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if update.message:
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
     elif update.callback_query:
-        await update.callback_query.message.reply_text(welcome_text, reply_markup=reply_markup)
+        await update.callback_query.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
 
-# ২. লাভ ক্যালকুলেটর (/lovecalculator নাম১ + নাম২)
+# ২. ছবি সেভ করার হ্যান্ডলার (ইউজার ফটো পাঠালে এটি ট্রিগার হবে)
+async def handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # টেলিগ্রাম ছবিতে একাধিক রেজোলিউশন পাঠায়, আমরা সবচেয়ে হাই-কোয়ালিটি (-1) ছবির File ID নেব
+    photo_file_id = update.message.photo[-1].file_id
+    
+    # লিস্টে সেভ করে রাখা
+    USER_SAVED_PHOTOS.append(photo_file_id)
+    
+    await update.message.reply_text(
+        "🎉 *ধন্যবাদ!* আপনার ছবিটি সফলভাবে বোটের মেমোরি গ্যালারিতে সেভ করা হয়েছে। "
+        "এখন গ্যালারিতে ক্লিক করলে আপনার ছবিটিও দেখা যাবে! 📸",
+        parse_mode="Markdown"
+    )
+
+# ৩. গ্যালারি সেন্ড করা (ডিফল্ট ছবি + ইউজারদের পাঠানো ছবি)
+async def send_gallery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    # মেসেজ নিশ্চিতকরণ
+    msg = update.message or update.callback_query.message
+    
+    # যদি কোনো ইউজার ছবি না পাঠিয়ে থাকে, তবে ডিফল্ট ছবি দেখাবে
+    all_photos = USER_SAVED_PHOTOS if len(USER_SAVED_PHOTOS) > 0 else DEFAULT_PHOTOS
+
+    await msg.reply_text(f"🌸 গ্যালারি লোড হচ্ছে... (মোট ছবি: {len(all_photos)} টি)")
+
+    # টেলিগ্রামে একবারে সর্বোচ্চ ১০টি মিডিয়া ফাইল পাঠানো যায়
+    photos_to_send = all_photos[-10:]  # সর্বশেষ ১০টি ছবি নেওয়া
+    
+    media_group = [InputMediaPhoto(media=photo_id) for photo_id in photos_to_send]
+    await context.bot.send_media_group(chat_id=chat_id, media=media_group)
+
+# ৪. লাভ ক্যালকুলেটর
 async def love_calculator(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ইউজার যদি প্যারামিটার দিয়ে থাকে (যেমন: /lovecalculator রহিম + রহিমা)
     if not context.args or "+" not in " ".join(context.args):
         await update.message.reply_text(
             "⚠️ ব্যবহারের নিয়ম:\n`/lovecalculator নাম১ + নাম২`\n\n"
@@ -72,19 +92,12 @@ async def love_calculator(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     full_text = " ".join(context.args)
     names = full_text.split("+")
-    name1 = names[0].strip()
-    name2 = names[1].strip()
+    name1, name2 = names[0].strip(), names[1].strip()
 
-    # নামের ওপর ভিত্তি করে একটি নির্দিষ্ট পার্সেন্টেজ হিসাব (যেন প্রতিবার একই ইনপুটে একই ফলাফল আসে)
     combined = (name1.lower() + name2.lower()).encode('utf-8')
     score = sum(combined) % 101
 
-    if score > 80:
-        comment = "স্বর্গীয় জুটি! আপনাদের ভালোবাসা চিরস্থায়ী হোক। 👩‍❤️‍👨💖"
-    elif score > 50:
-        comment = "বেশ ভালো সম্পর্ক! একটু যত্ন নিলেই সেরা জুটি হবেন। ❤️"
-    else:
-        comment = "সম্পর্কে আরও বোঝাপড়া ও সময় দেওয়া প্রয়োজন! 💔"
+    comment = "স্বর্গীয় জুটি! 👩‍❤️‍👨💖" if score > 75 else "সুন্দর সম্পর্ক! ❤️"
 
     response = (
         f"💌 *লাভ ক্যালকুলেটর রেজাল্ট* 💌\n\n"
@@ -95,58 +108,30 @@ async def love_calculator(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(response, parse_mode="Markdown")
 
-# ৩. রোমান্টিক উক্তি
-async def love_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    quote = random.choice(LOVE_QUOTES)
-    if update.message:
-        await update.message.reply_text(quote)
-    elif update.callback_query:
-        await update.callback_query.message.reply_text(quote)
-
-# ৪. সম্পর্কের টিপস
-async def love_tips(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tip = random.choice(LOVE_TIPS)
-    if update.message:
-        await update.message.reply_text(tip)
-    elif update.callback_query:
-        await update.callback_query.message.reply_text(tip)
-
-# ৫. ফ্লার্ট মেসেজ
-async def flirt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    line = random.choice(FLIRT_LINES)
-    if update.message:
-        await update.message.reply_text(line)
-    elif update.callback_query:
-        await update.callback_query.message.reply_text(line)
-
-# ৬. বাটন ক্লিক হ্যান্ডলার
+# ৫. বাটন ক্লিক হ্যান্ডলার
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "btn_quote":
-        await love_quote(update, context)
-    elif query.data == "btn_tips":
-        await love_tips(update, context)
-    elif query.data == "btn_flirt":
-        await flirt(update, context)
+    if query.data == "btn_gallery":
+        await send_gallery(update, context)
     elif query.data == "btn_calc_info":
         await query.message.reply_text(
-            "💖 লাভ ক্যালকুলেটর ব্যবহার করতে এভাবে মেসেজ পাঠান:\n\n"
+            "💖 লাভ ক্যালকুলেটর ব্যবহার করতে টাইপ করুন:\n\n"
             "`/lovecalculator আপনারনাম + প্রিয়মানুষেরনাম`",
             parse_mode="Markdown"
         )
 
-# ৭. সাধারণ টেক্সট মেসেজের উত্তর
+# ৬. সাধারণ টেক্সট বার্তা হ্যান্ডলার
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text.lower()
     
-    if "ভালোবাসি" in user_text or "love" in user_text:
+    if "গ্যালারি" in user_text or "gallery" in user_text:
+        await send_gallery(update, context)
+    elif "ভালোবাসি" in user_text or "love" in user_text:
         await update.message.reply_text("ভালোবাসা সুন্দর! সবসময় প্রিয় মানুষটিকে আগলে রাখুন। ❤️")
-    elif "কেমন আছো" in user_text:
-        await update.message.reply_text("আমি ভালো আছি! আপনার রোমান্টিক মুহূর্তগুলো সুন্দর করতে আমি প্রস্তুত। ✨")
     else:
-        await update.message.reply_text("আমি বুজতে পারিনি! মেনু দেখতে /start চাপুন অথবা বাটন ব্যবহার করুন। 🤖")
+        await update.message.reply_text("আমি ঠিক বুঝতে পারছি না! ফটো পাঠাতে পারেন অথবা /start চাপুন। 🤖")
 
 if __name__ == '__main__':
     TOKEN = os.getenv("BOT_TOKEN")
@@ -156,16 +141,17 @@ if __name__ == '__main__':
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # কমান্ড হ্যান্ডলার
+    # কমান্ড হ্যান্ডলারসমূহ
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("gallery", send_gallery))
     app.add_handler(CommandHandler("lovecalculator", love_calculator))
-    app.add_handler(CommandHandler("lovequote", love_quote))
-    app.add_handler(CommandHandler("lovetips", love_tips))
-    app.add_handler(CommandHandler("flirt", flirt))
 
-    # ইনলাইন বাটন ও সাধারণ টেক্সট হ্যান্ডলার
+    # ইউজার কোনো ছবি (Photo) পাঠালে তা সেভ করার হ্যান্ডলার
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo_upload))
+
+    # বাটন ও সাধারণ টেক্সট হ্যান্ডলার
     app.add_handler(CallbackQueryHandler(button_click))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    print("ভালোবাসার বোট সফলতা সহকারে চালু হয়েছে...")
+    print("ছবি সেভ সুবিধা সহ বোট প্রস্তুত...")
     app.run_polling()
