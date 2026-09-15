@@ -5,8 +5,8 @@ from datetime import datetime, date
 from bson.objectid import ObjectId
 from pymongo import MongoClient
 from dotenv import load_dotenv
-import cloudinary
-import cloudinary.uploader
+# import cloudinary
+# import cloudinary.uploader
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -21,13 +21,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 # ─── .env লোড ────────────────────────────────────────────────────────────────
 load_dotenv()
 
-# ─── Cloudinary Config ────────────────────────────────────────────────────────
-cloudinary.config(
-    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key    = os.getenv("CLOUDINARY_API_KEY"),
-    api_secret = os.getenv("CLOUDINARY_API_SECRET"),
-    secure     = True,
-)
+# ─── Cloudinary Config (এখন বন্ধ আছে — চালু করতে উপরের import আনকমেন্ট করুন) ──
+# cloudinary.config(
+#     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"),
+#     api_key    = os.getenv("CLOUDINARY_API_KEY"),
+#     api_secret = os.getenv("CLOUDINARY_API_SECRET"),
+#     secure     = True,
+# )
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -711,20 +711,20 @@ async def handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         file_info    = await context.bot.get_file(photo_file_id)
         telegram_url = file_info.file_path   # Telegram CDN URL
 
-        # ── Cloudinary তে upload ──────────────────────────────────────────
+        # ── Cloudinary তে upload (এখন বন্ধ আছে) ─────────────────────────
         cloudinary_url = None
-        try:
-            # Telegram URL থেকে সরাসরি Cloudinary তে upload
-            upload_result  = cloudinary.uploader.upload(
-                telegram_url,
-                folder        = "love-telebot",
-                resource_type = "image",
-            )
-            cloudinary_url = upload_result.get("secure_url")
-            logger.info(f"Cloudinary upload success: {cloudinary_url}")
-        except Exception as cld_err:
-            # Cloudinary fail হলেও বোট চলবে — শুধু log করব
-            logger.warning(f"Cloudinary upload failed: {cld_err}")
+        # try:
+        #     # Telegram URL থেকে সরাসরি Cloudinary তে upload
+        #     upload_result  = cloudinary.uploader.upload(
+        #         telegram_url,
+        #         folder        = "love-telebot",
+        #         resource_type = "image",
+        #     )
+        #     cloudinary_url = upload_result.get("secure_url")
+        #     logger.info(f"Cloudinary upload success: {cloudinary_url}")
+        # except Exception as cld_err:
+        #     # Cloudinary fail হলেও বোট চলবে — শুধু log করব
+        #     logger.warning(f"Cloudinary upload failed: {cld_err}")
 
         result = gallery_col.insert_one({
             "file_id":          photo_file_id,
@@ -738,12 +738,12 @@ async def handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         })
         log_action(user.id, user.username or "N/A", "photo_uploaded", str(result.inserted_id))
 
-        # Success message — Cloudinary status সহ
-        cloud_status = "☁️ Cloudinary: ✅ সেভ হয়েছে" if cloudinary_url else "☁️ Cloudinary: ⚠️ সেভ হয়নি (Telegram URL ব্যবহার হবে)"
+        # Success message
+        # cloud_status = "☁️ Cloudinary: ✅ সেভ হয়েছে" if cloudinary_url else "☁️ Cloudinary: ⚠️ সেভ হয়নি (Telegram URL ব্যবহার হবে)"
         await update.message.reply_text(
             f"🎉 *ছবি সফলভাবে গ্যালারিতে যোগ হয়েছে!*\n\n"
-            f"📝 *ডেসক্রিপশন:* {description}\n"
-            f"{cloud_status}",
+            f"📝 *ডেসক্রিপশন:* {description}",
+            # f"{cloud_status}",   # Cloudinary চালু হলে এই লাইনটি আনকমেন্ট করুন
             parse_mode="Markdown",
         )
     except Exception as e:
